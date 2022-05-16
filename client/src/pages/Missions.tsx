@@ -22,6 +22,8 @@ import {
   Tooltip,
   Snackbar,
   Alert,
+  Box,
+  CircularProgress,
 } from "@mui/material";
 
 import {
@@ -36,7 +38,7 @@ import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
 
 import { ListMenu } from "../components/ListMenu";
 
-type SortField = "Title" | "Date";
+type SortField = "Title" | "Date" | "Operator";
 
 interface MissionsResponse {
   data: {
@@ -50,10 +52,11 @@ const getMissions = async (
 ): Promise<MissionsResponse> => {
   return await fetchGraphQL(
     `
-  {
+  query($sortField: MissionSortFields!, $sortDesc: Boolean){
     Missions(
       sort: {
-        field: ${sortField}
+        field: $sortField
+        desc: $sortDesc
       }
     ) {
       id
@@ -65,15 +68,78 @@ const getMissions = async (
     }
   }
   `,
-    []
-  );
+		{ sortField: sortField, sortDesc: sortDesc }
+	);
+};
+
+const addNewMission = async (
+	title: string,
+	operator: string,
+	date: Date
+): Promise<MissionsResponse> => {
+	return await fetchGraphQL(
+		`mutation ($title: String!, $operator: String!, $date: DateTime!){
+			createMission(mission: {
+				title: $title,
+				operator: $operator,
+				launch:{
+				date: $date,
+				vehicle: "Nimrod V",
+				location: {
+					name: "Cape Canaveral SLC-40",
+					longitude: -80.57718,
+					latitude: -28.562106
+				},
+				
+				},
+				orbit:{
+				periapsis: 400,
+				apoapsis: 450,
+				inclination: 75
+				},
+				payload:{
+				capacity: 22000,
+				available: 7000
+				}
+			}){
+				id
+				title
+				operator
+				launch {
+				date
+				}
+			}
+		}
+		`,
+		{ title: title, operator: operator, date: date?.toISOString() }
+	);
+};
+
+const removeMission = async (id: number): Promise<MissionsResponse> => {
+	return await fetchGraphQL(
+		`mutation ($id: ID!){
+			deleteMission(id: $id)
+			{
+				id
+				title
+				operator
+				launch {
+				date
+				}
+			}
+		}
+		`,
+		{ id: id }
+	);
 };
 
 const Missions = (): JSX.Element => {
-  const [missions, setMissions] = useState<Mission[]>([]);
+  const [missions, setMissions] = useState<Mission[] | null>(null);
   const [newMissionOpen, setNewMissionOpen] = useState(false);
+  const [name, setName] = useState<string>("");
+  const [operator, setOperator] = useState<string>("");
   const [tempLaunchDate, setTempLaunchDate] = useState<Date | null>(null);
-  const [sortDesc, setSortDesc] = useState<boolean>(true);
+  const [sortDesc, setSortDesc] = useState<boolean>(false);
   const [sortField, setSortField] = useState<SortField>("Title");
   const [errMessage, setErrMessage] = useState<String | null>(null);
 
@@ -91,6 +157,14 @@ const Missions = (): JSX.Element => {
     setNewMissionOpen(false);
   };
 
+  const saveNewMission = async () => {
+  	if (tempLaunchDate !== null) {
+  		await addNewMission(name, operator, tempLaunchDate);
+  		handleNewMissionClose();
+  		setMissions((await getMissions(sortField, sortDesc)).data.Missions);
+  	}
+  };
+  
   const handleTempLaunchDateChange = (newValue: Date | null) => {
     setTempLaunchDate(newValue);
   };
@@ -103,7 +177,7 @@ const Missions = (): JSX.Element => {
   };
 
   useEffect(() => {
-    getMissions(sortField)
+    getMissions(sortField, sortDesc)
       .then((result: MissionsResponse) => {
         setMissions(result.data.Missions);
       })
@@ -111,7 +185,12 @@ const Missions = (): JSX.Element => {
         setErrMessage("Failed to load missions.");
         console.log(err);
       });
-  }, [sortField]);
+  }, [sortField, sortDesc]);
+
+	const deleteMission = async (id: any) => {
+		await removeMission(id);
+		setMissions((await getMissions(sortField, sortDesc)).data.Missions);
+	};
 
   return (
     <AppLayout title="Missions">
@@ -126,7 +205,7 @@ const Missions = (): JSX.Element => {
               <FilterAltIcon />
             </IconButton>
             <ListMenu
-              options={["Date", "Title"]}
+              options={["Date", "Title", "Operator"]}
               endIcon={<SortIcon />}
               onSelectionChange={handleSortFieldChange}
             />
@@ -135,7 +214,10 @@ const Missions = (): JSX.Element => {
             </IconButton>
           </Grid>
         </Toolbar>
+        
+        {missions ? (
         <Grid container spacing={2}>
+          {" "}
           {missions.map((missions: Mission, key: number) => (
             <Grid item key={key}>
               <Card sx={{ width: 275, height: 200 }}>
@@ -148,11 +230,25 @@ const Missions = (): JSX.Element => {
                 </CardContent>
                 <CardActions>
                   <Button>Edit</Button>
+        
+          				<Button
+				  					onClick={() => {
+												deleteMission(missions.id);
+											}}
+										>
+											Delete
+										</Button>
                 </CardActions>
               </Card>
             </Grid>
           ))}
         </Grid>
+        ) : (
+					<Box sx={{ textAlign: "center" }}>
+						<CircularProgress />
+					</Box>
+				)}
+
         <Tooltip title="New Mission">
           <Fab
             sx={{ position: "fixed", bottom: 16, right: 16 }}
@@ -179,15 +275,23 @@ const Missions = (): JSX.Element => {
                   label="Name"
                   variant="standard"
                   fullWidth
+                  value={name}
+                  onChange={(e) => {
+                  	setName(e.target.value);
+                  }}
                 />
               </Grid>
               <Grid item>
                 <TextField
                   autoFocus
-                  id="desc"
-                  label="Description"
+                  id="operator"
+                  label="Operator"
                   variant="standard"
                   fullWidth
+                  value={operator}
+                  onChange={(e) => {
+                  	setOperator(e.target.value);
+                  }}
                 />
               </Grid>
 
@@ -209,7 +313,7 @@ const Missions = (): JSX.Element => {
           </DialogContent>
           <DialogActions>
             <Button onClick={handleNewMissionClose}>Cancel</Button>
-            <Button onClick={handleNewMissionClose}>Save</Button>
+            <Button onClick={saveNewMission}>Save</Button>
           </DialogActions>
         </Dialog>
       </Container>

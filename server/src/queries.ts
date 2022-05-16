@@ -15,14 +15,17 @@ export const ListMissions = (missions: Mission[], args: any) => {
           a = new Date(aMission.launch.date);
           b = new Date(bMission.launch.date);
           break;
+        case "Operator":
+          a = aMission.operator;
+          b = bMission.operator;
         default:
           a = "";
           b = "";
       }
-      if (args.sort?.desc !== false) {
-        return a > b ? 1 : -1;
-      } else {
+      if (args.sort?.desc === true) {
         return a < b ? 1 : -1;
+      } else {
+        return a > b ? 1 : -1;  
       }
     });
   }

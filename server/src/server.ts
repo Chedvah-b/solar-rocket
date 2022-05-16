@@ -33,7 +33,7 @@ app
     });
   });
 
-// GraphQL Query Wrapper function which also initializes data if necessary
+// Wrapper function which initializes data if necessary
 const _g = async (callback?: Function) => {
   try {
     await access(DATA_DIR);
@@ -92,9 +92,36 @@ const main = async () => {
           );
           return mission;
         },
+        async deleteMission(obj, args) {
+          
+          const missions = await loadMissions();
+          const mission = GetMissionById(missions, args.id);
+          const newMissions: any = [];
+          missions.filter((index) => {
+            if (index.id !== args.id)
+              newMissions.push(index);
+          })
+            
+            await writeFile(
+            path.join(DATA_DIR, DATA_FILE_MISSIONS),
+            JSON.stringify(newMissions),
+            "utf8"
+          );
+            
+            return mission;
+    
+        },
+        
       },
     },
   });
+
+  app.get("/readme", 
+    async (req : Request, res: Response ) => {
+      const readme : String = await readFile(path.join(__dirname, "../../README.md"), "utf8")
+      res.send(readme);
+    }
+  );
 
   app.use(
     "/graphql",
